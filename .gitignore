@@ -1,0 +1,83 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Environment files
+.env
+.env.*
+!.env.example
+backend/.env
+backend/.env.*
+!backend/.env.example
+client/.env
+client/.env.*
+!client/.env.example
+
+# Python / FastAPI
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.python-version
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+backend/.venv/
+backend/venv/
+
+# Backend local data
+backend/payroll.db
+backend/*.db
+backend/*.sqlite
+backend/*.sqlite3
+backend/app/employees_faces/*
+!backend/app/employees_faces/.gitkeep
+backend/generated/
+backend/exports/
+backend/tmp/
+backend/uploads/
+
+# Node / Next.js
+node_modules/
+client/node_modules/
+client/.next/
+client/out/
+client/build/
+client/coverage/
+client/.vercel/
+client/*.tsbuildinfo
+client/next-env.d.ts
+
+# Package manager artifacts
+.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# Misc secrets / certs
+*.pem

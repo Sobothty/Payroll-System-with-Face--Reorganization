@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{{ company_name }} Attendance Kiosk</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Sora:wght@500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="{{ url_for('static', path='kiosk.css') }}" />
+  </head>
+  <body data-company-name="{{ company_name }}">
+    <main class="kiosk-shell">
+      <section class="camera-column">
+        <header class="top-strip">
+          <div class="brand-block">
+            <div class="brand-mark"><span>Pulse</span><strong>Ledger</strong></div>
+            <div class="kiosk-badge">ATTENDANCE KIOSK</div>
+          </div>
+          <div class="clock-block">
+            <div class="clock" id="clock">00:00:00</div>
+            <div class="date-line" id="dateLine">Monday, January 1, 2026</div>
+          </div>
+        </header>
+
+        <div class="label-row">
+          <div class="camera-state">
+            <span class="dot"></span>
+            <span>LIVE CAMERA</span>
+          </div>
+          <div class="status-copy" id="statusCopy">Camera ready · Position face inside the frame</div>
+        </div>
+
+        <div class="viewfinder">
+          <video id="feed" autoplay playsinline muted></video>
+          <div class="corner tl"></div>
+          <div class="corner tr"></div>
+          <div class="corner bl"></div>
+          <div class="corner br"></div>
+          <div class="scan-line" id="scanLine"></div>
+          <div class="pulse-rings" id="pulseRings">
+            <span></span><span></span><span></span>
+          </div>
+          <div class="zoom-frame" id="zoomFrame"></div>
+          <div class="flash-overlay" id="flashOverlay"></div>
+          <div class="status-pill" id="statusPill">Camera ready</div>
+        </div>
+
+        <div class="action-panel">
+          <button id="scanButton" class="scan-button" type="button">Check In / Check Out</button>
+          <div class="scan-meta">RetinaFace detection + ArcFace matching</div>
+        </div>
+      </section>
+
+      <aside class="result-column">
+        <section class="result-card" id="resultCard">
+          <div class="result-badge" id="resultBadge">LAST RESULT</div>
+          <div class="result-icon" id="resultIcon">⌚</div>
+          <h1 id="resultName">Awaiting verification</h1>
+          <p id="resultSubtitle">Employee identity will appear here after scan.</p>
+          <div class="detail-grid">
+            <div><span>Type</span><strong id="resultType">Idle</strong></div>
+            <div><span>Time</span><strong id="resultTime">--:--:--</strong></div>
+            <div><span>Confidence</span><strong id="resultConfidence">--</strong></div>
+            <div><span>Department</span><strong id="resultDepartment">--</strong></div>
+          </div>
+        </section>
+
+        <section class="activity-card">
+          <div class="card-title">Recent Activity</div>
+          <div id="activityFeed" class="activity-feed"></div>
+        </section>
+      </aside>
+    </main>
+    <script src="{{ url_for('static', path='kiosk.js') }}" defer></script>
+  </body>
+</html>
