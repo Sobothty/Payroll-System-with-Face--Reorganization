@@ -20,6 +20,7 @@ const initialForm = {
   email: "",
   phone: "",
   temporary_password: "password123",
+  new_password: "",
   status: "active",
   compensation_effective_from: new Date().toISOString().slice(0, 10),
   compensation_reason: "",
@@ -76,7 +77,24 @@ export default function EmployeesPage() {
 
   async function submitForm() {
     setFormError("");
-    const body = JSON.stringify(form);
+    const payload = editing
+      ? {
+          full_name: form.full_name,
+          employee_code: form.employee_code,
+          department: form.department,
+          position: form.position,
+          pay_type: form.pay_type,
+          base_salary: form.base_salary,
+          hire_date: form.hire_date,
+          email: form.email,
+          phone: form.phone,
+          status: form.status,
+          compensation_effective_from: form.compensation_effective_from,
+          compensation_reason: form.compensation_reason,
+          ...(form.new_password ? { new_password: form.new_password } : {}),
+        }
+      : form;
+    const body = JSON.stringify(payload);
     try {
       if (editing) {
         await apiFetch(`/api/employees/${editing.id}`, { method: "PUT", body });
@@ -166,9 +184,13 @@ export default function EmployeesPage() {
                     <Button type="button" tone="secondary" onClick={() => openEdit(employee)}>
                       Edit
                     </Button>
-                    <Button type="button" tone="success" onClick={() => router.push(`/face-registration?employee_id=${employee.id}`)}>
-                      Register Face
-                    </Button>
+                    {employee.face_folder_path ? (
+                      <span className="badge">Face Registered</span>
+                    ) : (
+                      <Button type="button" tone="success" onClick={() => router.push(`/face-registration?employee_id=${employee.id}`)}>
+                        Register Face
+                      </Button>
+                    )}
                     <Button type="button" tone="danger" onClick={() => softDelete(employee)}>
                       Disable
                     </Button>
@@ -269,7 +291,31 @@ export default function EmployeesPage() {
                     onChange={(event) => setForm({ ...form, temporary_password: event.target.value })}
                   />
                 </Field>
-              ) : null}
+              ) : (
+                <div className="grid-two">
+                  <Field label="Reset Password">
+                    <input
+                      className="text-input"
+                      type="password"
+                      value={form.new_password}
+                      onChange={(event) => setForm({ ...form, new_password: event.target.value })}
+                      placeholder="Leave blank to keep current password"
+                    />
+                  </Field>
+                  <Field label="Face Registration">
+                    <div className="form-grid" style={{ gap: 10 }}>
+                      <div className="muted">{editing?.face_folder_path ? "Face is already registered." : "No face registered yet."}</div>
+                      <Button
+                        type="button"
+                        tone={editing?.face_folder_path ? "secondary" : "success"}
+                        onClick={() => router.push(`/face-registration?employee_id=${editing?.id}${editing?.face_folder_path ? "&mode=replace" : ""}`)}
+                      >
+                        {editing?.face_folder_path ? "Re-register Face" : "Register Face"}
+                      </Button>
+                    </div>
+                  </Field>
+                </div>
+              )}
               {editing?.compensation_history?.length ? (
                 <div className="form-grid">
                   <h3 className="section-heading">Compensation History</h3>

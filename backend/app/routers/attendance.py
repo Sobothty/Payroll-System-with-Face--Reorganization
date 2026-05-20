@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.database import get_db
+from app.config.database import get_db
 from app.models import AttendanceLog
-from app.schemas import AttendanceCorrectionRequestCreate, AttendanceUpdate
+from app.schema import AttendanceCorrectionRequestCreate, AttendanceUpdate
 from app.security import get_current_user
 from app.services.attendance_correction_service import create_correction_request, list_correction_requests
 from app.services.attendance_service import attendance_summary
@@ -22,11 +22,17 @@ def list_attendance(current_user=Depends(get_current_user), db: Session = Depend
         {
             "id": row.id,
             "employee_id": row.employee_id,
+            "shift_assignment_id": row.shift_assignment_id,
             "check_in": row.check_in,
             "check_out": row.check_out,
+            "scheduled_start": row.scheduled_start,
+            "scheduled_end": row.scheduled_end,
             "hours_worked": row.hours_worked,
             "late_minutes": row.late_minutes,
+            "early_leave_minutes": row.early_leave_minutes,
             "overtime_hours": row.overtime_hours,
+            "attendance_status": row.attendance_status,
+            "source_status": row.source_status,
             "date": row.date,
         }
         for row in rows

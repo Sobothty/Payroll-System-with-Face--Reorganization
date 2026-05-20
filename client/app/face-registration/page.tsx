@@ -25,6 +25,7 @@ function FaceRegistrationContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const employeeId = searchParams.get("employee_id") ?? "";
+  const replaceMode = searchParams.get("mode") === "replace";
   const videoRef = useRef<HTMLVideoElement>(null);
   const [employee, setEmployee] = useState<Employee | null>(null);
   const [frames, setFrames] = useState<string[]>([]);
@@ -39,6 +40,7 @@ function FaceRegistrationContent() {
   useEffect(() => {
     let activeStream: MediaStream | null = null;
     async function startCamera() {
+      if (employee?.face_folder_path && !replaceMode) return;
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { width: 640, height: 480, facingMode: "user" },
       });
@@ -49,7 +51,7 @@ function FaceRegistrationContent() {
     return () => {
       activeStream?.getTracks().forEach((track) => track.stop());
     };
-  }, []);
+  }, [employee?.face_folder_path, replaceMode]);
 
   const currentAngle = frames.length;
   const progress = Math.min((frames.length / 10) * 100, 100);
@@ -77,7 +79,7 @@ function FaceRegistrationContent() {
         method: "POST",
         body: JSON.stringify({ employee_id: employeeId, frames }),
       });
-      setFeedback({ type: "success", message: "Face registration saved successfully." });
+      setFeedback({ type: "success", message: replaceMode ? "Face registration replaced successfully." : "Face registration saved successfully." });
       router.push("/employees");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unable to save face registration.";
@@ -93,6 +95,35 @@ function FaceRegistrationContent() {
       : frames.length < 10
         ? `In progress — ${10 - frames.length} frames remaining`
         : "All angles captured — ready to register";
+
+  if (employee?.face_folder_path && !replaceMode) {
+    return (
+      <Card>
+        <div className="form-grid">
+          <div>
+            <h2 className="section-heading">Face Already Registered</h2>
+            <p className="muted">
+              {employee.full_name} already has a completed face registration. Use re-register only when you intentionally want to replace the stored face data.
+            </p>
+          </div>
+          <div className="form-grid">
+            <div><strong>{employee.full_name}</strong></div>
+            <div className="muted">{employee.employee_code}</div>
+            <div className="muted">{employee.department}</div>
+            <div className="muted">{employee.position}</div>
+          </div>
+          <div className="action-row">
+            <Button type="button" tone="secondary" onClick={() => router.push("/employees")}>
+              Back to Employees
+            </Button>
+            <Button type="button" onClick={() => router.push(`/face-registration?employee_id=${employee.id}&mode=replace`)}>
+              Re-register Face
+            </Button>
+          </div>
+        </div>
+      </Card>
+    );
+  }
 
   return (
     <div className="grid-two">
@@ -160,7 +191,7 @@ function FaceRegistrationContent() {
               Retake Last
             </Button>
             <Button type="button" tone="success" onClick={saveRegistration} disabled={saving || frames.length !== 10}>
-              {saving ? "Saving face data..." : "Save & Register"}
+              {saving ? "Saving face data..." : replaceMode ? "Save & Replace Face" : "Save & Register"}
             </Button>
           </div>
           {feedback ? (

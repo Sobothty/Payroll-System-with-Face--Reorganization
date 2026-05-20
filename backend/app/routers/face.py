@@ -4,9 +4,9 @@ from tempfile import NamedTemporaryFile
 from fastapi import APIRouter, Depends, File, UploadFile
 from sqlalchemy.orm import Session
 
-from app.database import get_db
+from app.config.database import get_db
 from app.face.recognition import FACES_DIR, recognize_face, register_employee_face
-from app.schemas import FaceRegistrationRequest
+from app.schema import FaceRegistrationRequest
 from app.security import require_role
 from app.services.attendance_service import log_attendance
 from app.services.employee_service import get_employee_or_404

@@ -2,7 +2,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.models import AttendanceCorrectionRequest, AttendanceLog, User
-from app.schemas import AttendanceCorrectionRequestCreate
+from app.schema import AttendanceCorrectionRequestCreate
 from app.services.audit_service import record_audit
 from app.services.notification_service import create_notification
 

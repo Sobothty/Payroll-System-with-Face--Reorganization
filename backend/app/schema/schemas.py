@@ -9,6 +9,7 @@ class EmployeeBase(BaseModel):
     employee_code: str
     department: str
     position: str
+    employment_type: Literal["permanent", "contract", "intern", "daily_worker"] = "permanent"
     pay_type: Literal["monthly", "daily", "hourly"]
     base_salary: float = Field(ge=0)
     hire_date: date
@@ -27,6 +28,7 @@ class EmployeeUpdate(BaseModel):
     full_name: str | None = None
     department: str | None = None
     position: str | None = None
+    employment_type: Literal["permanent", "contract", "intern", "daily_worker"] | None = None
     pay_type: Literal["monthly", "daily", "hourly"] | None = None
     base_salary: float | None = Field(default=None, ge=0)
     hire_date: date | None = None
@@ -36,6 +38,7 @@ class EmployeeUpdate(BaseModel):
     telegram_chat_id: str | None = None
     telegram_notifications_enabled: bool | None = None
     status: Literal["active", "inactive"] | None = None
+    new_password: str | None = Field(default=None, min_length=8)
     compensation_effective_from: date | None = None
     compensation_reason: str | None = None
 
@@ -57,8 +60,11 @@ class EmployeeOut(BaseModel):
     id: str
     full_name: str
     employee_code: str
+    legal_entity_id: str | None = None
+    branch_id: str | None = None
     department: str
     position: str
+    employment_type: str
     pay_type: str
     base_salary: float
     hire_date: date
@@ -105,22 +111,22 @@ class AttendanceUpdate(BaseModel):
     overtime_hours: float | None = None
 
 
-class PayrollCalculateRequest(BaseModel):
-    period_start: date
-    period_end: date
-    department: str | None = None
-    processed_by: str = "system"
-
-
 class PayrollDetailAdjust(BaseModel):
     employee_id: str
     bonus: float = 0
     allowance: float = 0
 
 
+class PayrollCalculateRequest(BaseModel):
+    period_start: date
+    period_end: date
+    department: str | None = None
+    processed_by: str = "system"
+    adjustments: list[PayrollDetailAdjust] = Field(default_factory=list)
+
+
 class PayrollRunRequest(PayrollCalculateRequest):
     status: Literal["draft", "approved", "paid"] = "draft"
-    adjustments: list[PayrollDetailAdjust] = Field(default_factory=list)
     correction_of_run_id: int | None = None
 
 

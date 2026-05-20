@@ -7,74 +7,177 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Sora:wght@500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Orbitron:wght@500;700&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="{{ url_for('static', path='kiosk.css') }}" />
   </head>
-  <body data-company-name="{{ company_name }}">
+  <body data-company-name="{{ company_name }}" data-state="idle">
+    <div class="screen-noise" aria-hidden="true"></div>
+
     <main class="kiosk-shell">
-      <section class="camera-column">
-        <header class="top-strip">
-          <div class="brand-block">
-            <div class="brand-mark"><span>Pulse</span><strong>Ledger</strong></div>
-            <div class="kiosk-badge">ATTENDANCE KIOSK</div>
-          </div>
-          <div class="clock-block">
-            <div class="clock" id="clock">00:00:00</div>
-            <div class="date-line" id="dateLine">Monday, January 1, 2026</div>
-          </div>
-        </header>
-
-        <div class="label-row">
-          <div class="camera-state">
-            <span class="dot"></span>
-            <span>LIVE CAMERA</span>
-          </div>
-          <div class="status-copy" id="statusCopy">Camera ready · Position face inside the frame</div>
+      <header class="top-bar">
+        <div class="top-bar__brand">
+          <div class="top-bar__title">{{ company_name }} Attendance Kiosk</div>
+          <div class="top-bar__subtitle">Payroll Attendance Kiosk</div>
         </div>
 
-        <div class="viewfinder">
-          <video id="feed" autoplay playsinline muted></video>
-          <div class="corner tl"></div>
-          <div class="corner tr"></div>
-          <div class="corner bl"></div>
-          <div class="corner br"></div>
-          <div class="scan-line" id="scanLine"></div>
-          <div class="pulse-rings" id="pulseRings">
-            <span></span><span></span><span></span>
-          </div>
-          <div class="zoom-frame" id="zoomFrame"></div>
-          <div class="flash-overlay" id="flashOverlay"></div>
-          <div class="status-pill" id="statusPill">Camera ready</div>
+        <div class="top-bar__meta">
+          <div class="top-bar__meta-line">Attendance Verification</div>
+          <div class="top-bar__clock" id="clock">00:00:00</div>
+          <div class="top-bar__date" id="dateLine">Wednesday, May 20, 2026</div>
         </div>
+      </header>
 
-        <div class="action-panel">
-          <button id="scanButton" class="scan-button" type="button">Check In / Check Out</button>
-          <div class="scan-meta">RetinaFace detection + ArcFace matching</div>
-        </div>
+      <section class="kiosk-grid">
+        <section class="camera-panel">
+          <div class="panel-head">
+            <div>
+              <div class="panel-label">Face Scan</div>
+              <h1>Employee Check-In / Check-Out</h1>
+              <p class="panel-subtitle">Please align your face inside the frame for attendance verification.</p>
+            </div>
+
+            <div class="live-badge">
+              <span class="live-dot"></span>
+              Camera Active
+            </div>
+          </div>
+
+          <div class="camera-frame" id="cameraFrame">
+            <video id="feed" autoplay playsinline muted></video>
+            <div class="camera-vignette" aria-hidden="true"></div>
+            <div class="scan-frame" aria-hidden="true">
+              <span class="corner tl"></span>
+              <span class="corner tr"></span>
+              <span class="corner bl"></span>
+              <span class="corner br"></span>
+            </div>
+            <div class="scan-line" id="scanLine" aria-hidden="true"></div>
+            <div class="pulse-rings" id="pulseRings" aria-hidden="true">
+              <span></span><span></span><span></span>
+            </div>
+            <div class="zoom-frame" id="zoomFrame" aria-hidden="true"></div>
+            <div class="flash-overlay" id="flashOverlay" aria-hidden="true"></div>
+            <div class="frame-chip" id="frameChip">Auto face fit standby</div>
+          </div>
+
+          <div class="camera-footer">
+            <div class="status-block">
+              <div class="status-pill" id="statusPill">Ready to Scan</div>
+              <p class="status-copy" id="statusCopy">Please stand in front of the camera.</p>
+            </div>
+
+            <div class="action-block">
+              <button id="scanButton" class="primary-button" type="button">Start Scan</button>
+              <button id="retryButton" class="secondary-button" type="button">Try Again</button>
+            </div>
+          </div>
+        </section>
+
+        <aside class="result-panel">
+          <section class="result-hero card">
+            <div class="result-hero__badge" id="resultBadge">WAITING FOR EMPLOYEE</div>
+            <h2 id="resultTitle">Waiting for employee...</h2>
+            <p id="resultMessage">Please align your face inside the frame.</p>
+          </section>
+
+          <section class="mode-grid">
+            <article class="card">
+              <div class="section-label">Mode</div>
+              <div class="mode-pill-group">
+                <span class="mode-pill mode-pill--active">Auto</span>
+                <span class="mode-pill" id="nextActionPill">Next action pending</span>
+              </div>
+              <div class="mode-copy" id="modeCopy">The kiosk will automatically determine check-in or check-out after recognition.</div>
+            </article>
+
+            <article class="card">
+              <div class="section-label">Recognition Snapshot</div>
+              <div class="snapshot-card">
+                <img id="capturePreview" alt="Recognition snapshot" hidden />
+                <div id="snapshotPlaceholder" class="snapshot-placeholder">Snapshot will appear after scan</div>
+              </div>
+            </article>
+          </section>
+
+          <section class="detail-grid">
+            <article class="card">
+              <div class="section-label">Employee</div>
+              <div class="detail-list">
+                <div><span>Name</span><strong id="employeeName">Waiting for employee...</strong></div>
+                <div><span>Employee ID</span><strong id="employeeCode">--</strong></div>
+                <div><span>Department</span><strong id="employeeDepartment">--</strong></div>
+                <div><span>Role</span><strong id="employeeRole">--</strong></div>
+              </div>
+            </article>
+
+            <article class="card">
+              <div class="section-label">Attendance</div>
+              <div class="detail-list">
+                <div><span>Status</span><strong id="attendanceStatus">Ready to Scan</strong></div>
+                <div><span>Time</span><strong id="attendanceTime">--:--:--</strong></div>
+                <div><span>Check In</span><strong id="attendanceCheckIn">--</strong></div>
+                <div><span>Check Out</span><strong id="attendanceCheckOut">--</strong></div>
+                <div><span>Working Hours</span><strong id="attendanceHours">--</strong></div>
+                <div><span>Late Minutes</span><strong id="attendanceLate">0</strong></div>
+              </div>
+            </article>
+          </section>
+
+          <section class="summary-grid">
+            <article class="card">
+              <div class="section-label">Today</div>
+              <div class="summary-list">
+                <div><span>Check In</span><strong id="summaryTodayCheckIn">--</strong></div>
+                <div><span>Check Out</span><strong id="summaryTodayCheckOut">--</strong></div>
+                <div><span>Working Hours</span><strong id="summaryTodayHours">--</strong></div>
+                <div><span>Late Minutes</span><strong id="summaryTodayLate">0</strong></div>
+              </div>
+            </article>
+
+            <article class="card">
+              <div class="section-label">This Month</div>
+              <div class="summary-list">
+                <div><span>Present Days</span><strong id="summaryMonthPresent">0</strong></div>
+                <div><span>Late Times</span><strong id="summaryMonthLate">0</strong></div>
+                <div><span>Overtime Hours</span><strong id="summaryMonthOvertime">0</strong></div>
+              </div>
+            </article>
+          </section>
+
+          <section class="card system-card">
+            <div class="section-label">System Status</div>
+            <div class="system-status">
+              <div><span>Camera</span><strong id="sysCamera">Starting...</strong></div>
+              <div><span>Face Tracking</span><strong id="sysTracking">Checking...</strong></div>
+              <div><span>Attendance Sync</span><strong id="sysSync">Standby</strong></div>
+              <div><span>Last Sync</span><strong id="sysLastSync">--</strong></div>
+            </div>
+          </section>
+
+          <section class="card fallback-card">
+            <div class="section-label">Fallback Actions</div>
+            <div class="fallback-actions">
+              <button id="panelRetryButton" class="secondary-button" type="button">Try Again</button>
+              <button class="secondary-button" type="button" disabled>Manual Employee ID</button>
+              <button class="secondary-button" type="button" disabled>Call Admin</button>
+            </div>
+            <p class="fallback-note">Manual override should stay behind supervisor approval or admin PIN.</p>
+          </section>
+        </aside>
       </section>
-
-      <aside class="result-column">
-        <section class="result-card" id="resultCard">
-          <div class="result-badge" id="resultBadge">LAST RESULT</div>
-          <div class="result-icon" id="resultIcon">⌚</div>
-          <h1 id="resultName">Awaiting verification</h1>
-          <p id="resultSubtitle">Employee identity will appear here after scan.</p>
-          <div class="detail-grid">
-            <div><span>Type</span><strong id="resultType">Idle</strong></div>
-            <div><span>Time</span><strong id="resultTime">--:--:--</strong></div>
-            <div><span>Confidence</span><strong id="resultConfidence">--</strong></div>
-            <div><span>Department</span><strong id="resultDepartment">--</strong></div>
-          </div>
-        </section>
-
-        <section class="activity-card">
-          <div class="card-title">Recent Activity</div>
-          <div id="activityFeed" class="activity-feed"></div>
-        </section>
-      </aside>
     </main>
+
+    <aside class="success-popup" id="successPopup" aria-live="polite" aria-hidden="true">
+      <div class="success-popup__icon">✓</div>
+      <div class="success-popup__copy">
+        <div class="success-popup__eyebrow">Attendance Recorded</div>
+        <h3 id="successPopupName">Thank you</h3>
+        <p id="successPopupMessage">Attendance recorded successfully.</p>
+      </div>
+    </aside>
+
     <script src="{{ url_for('static', path='kiosk.js') }}" defer></script>
   </body>
 </html>

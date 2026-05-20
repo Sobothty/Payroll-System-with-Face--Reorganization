@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.database import get_db
+from app.config.database import get_db
 from app.models import User
 from app.security import create_access_token, create_refresh_token, decode_token, get_current_user
-from app.schemas import ChangePasswordRequest, TokenResponse, UserLogin
+from app.schema import ChangePasswordRequest, TokenResponse, UserLogin
 from app.services.auth_service import change_password, login_user
 
 

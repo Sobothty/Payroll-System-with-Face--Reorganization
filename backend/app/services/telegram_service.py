@@ -1,8 +1,8 @@
 import json
-import os
-from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+
+from app.config.env import get_env_value
 
 
 class TelegramServiceError(Exception):
@@ -12,38 +12,15 @@ class TelegramServiceError(Exception):
 _LAST_UPDATE_ID = 0
 
 
-def _read_env_file_value(key: str) -> str:
-    env_path = Path(__file__).resolve().parents[2] / ".env"
-    if not env_path.exists():
-        return ""
-
-    for raw_line in env_path.read_text(encoding="utf-8").splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        current_key, value = line.split("=", 1)
-        if current_key.strip() != key:
-            continue
-        return value.strip().strip("'").strip('"')
-    return ""
-
-
-def _get_env_value(key: str) -> str:
-    value = os.getenv(key, "").strip()
-    if value:
-        return value
-    return _read_env_file_value(key)
-
-
 def get_bot_token() -> str:
-    token = _get_env_value("TELEGRAM_BOT_TOKEN")
+    token = get_env_value("TELEGRAM_BOT_TOKEN")
     if not token:
         raise TelegramServiceError("Telegram bot token is not configured")
     return token
 
 
 def get_bot_username() -> str:
-    return _get_env_value("TELEGRAM_BOT_USERNAME")
+    return get_env_value("TELEGRAM_BOT_USERNAME")
 
 
 def get_telegram_updates() -> list[dict]:

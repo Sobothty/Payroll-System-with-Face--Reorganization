@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.database import get_db
-from app.schemas import SettingsPayload
+from app.config.database import get_db
+from app.schema import SettingsPayload
 from app.security import require_role
 from app.services.settings_service import get_settings
 

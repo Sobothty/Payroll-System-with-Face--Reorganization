@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.database import get_db
+from app.config.database import get_db
 from app.models import Employee
-from app.schemas import SelfServiceOverviewOut
+from app.schema import SelfServiceOverviewOut
 from app.security import get_current_user
 from app.services.leave_service import ensure_leave_balance
 from app.services.notification_service import list_notifications, send_test_telegram_notification

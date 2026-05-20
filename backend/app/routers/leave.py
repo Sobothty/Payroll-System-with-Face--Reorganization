@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.database import get_db
+from app.config.database import get_db
 from app.models import Employee, LeaveRequest
-from app.schemas import LeaveApprovalRequest, LeaveRequestCreate
+from app.schema import LeaveApprovalRequest, LeaveRequestCreate
 from app.security import get_current_user, require_role
 from app.services.leave_service import create_leave_request, ensure_leave_balance, get_leave_or_404, update_leave_status
 

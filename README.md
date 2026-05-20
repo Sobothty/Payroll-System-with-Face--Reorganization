@@ -3,7 +3,7 @@
 PulseLedger is a full-stack payroll and attendance platform built in this workspace with:
 
 - `client/`: Next.js 16 App Router + Tailwind CSS admin and self-service UI
-- `backend/`: FastAPI + SQLAlchemy + SQLite API and server-rendered attendance kiosk
+- `backend/`: FastAPI + SQLAlchemy API and server-rendered attendance kiosk
 - Face recognition via DeepFace using `ArcFace` and `RetinaFace`
 - PDF payslips via WeasyPrint
 - Excel exports via Pandas + openpyxl
@@ -56,13 +56,19 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-3. Initialize SQLite and seed defaults:
+3. Start PostgreSQL:
+
+```bash
+docker compose up -d
+```
+
+4. Initialize the database and seed defaults:
 
 ```bash
 python init_db.py
 ```
 
-4. Run the API and kiosk server:
+5. Run the API and kiosk server:
 
 ```bash
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
@@ -76,10 +82,10 @@ Important backend endpoints:
 - `GET /kiosk`
 - `POST /kiosk/scan`
 
-Default seeded admin credentials:
+Default seeded admin credentials are read from `backend/.env`:
 
-- Username: `admin`
-- Password: `admin123`
+- `ADMIN_USERNAME`
+- `ADMIN_PASSWORD`
 
 Phase 2A changes:
 

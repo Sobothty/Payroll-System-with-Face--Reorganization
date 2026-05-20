@@ -1,15 +1,16 @@
 import uuid
-from datetime import date
+from datetime import date, datetime
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session, joinedload
 
 from app.models import Employee, User
-from app.schemas import EmployeeCreate, EmployeeUpdate, ProfileUpdate
+from app.schema import EmployeeCreate, EmployeeUpdate, ProfileUpdate
 from app.security import hash_password
 from app.services.compensation_service import add_compensation_history
 from app.services.audit_service import record_audit
 from app.services.leave_service import ensure_leave_balance
+from app.services.organization_service import ensure_employee_org_defaults
 
 
 def list_employees(
@@ -53,6 +54,7 @@ def create_employee(db: Session, payload: EmployeeCreate, actor: User | None = N
     employee = Employee(id=str(uuid.uuid4()), **employee_fields)
     db.add(employee)
     db.flush()
+    ensure_employee_org_defaults(db, employee)
     add_compensation_history(
         db,
         employee=employee,
@@ -92,8 +94,26 @@ def update_employee(db: Session, employee: Employee, payload: EmployeeUpdate, ac
     compensation_changed = any(key in updates for key in ("pay_type", "base_salary"))
     effective_from = updates.pop("compensation_effective_from", None)
     compensation_reason = updates.pop("compensation_reason", None)
+    new_password = updates.pop("new_password", None)
     for field, value in updates.items():
         setattr(employee, field, value)
+    if employee.user:
+        employee.user.username = employee.employee_code.lower()
+    if new_password:
+        if not employee.user:
+            employee.user = User(
+                employee_id=employee.id,
+                username=employee.employee_code.lower(),
+                hashed_password=hash_password(new_password),
+                role="employee",
+                must_change_password=True,
+                password_changed_at=datetime.utcnow(),
+            )
+        else:
+            employee.user.username = employee.employee_code.lower()
+            employee.user.hashed_password = hash_password(new_password)
+            employee.user.must_change_password = True
+            employee.user.password_changed_at = datetime.utcnow()
     if compensation_changed:
         add_compensation_history(
             db,
@@ -103,6 +123,7 @@ def update_employee(db: Session, employee: Employee, payload: EmployeeUpdate, ac
             base_salary=float(employee.base_salary),
             reason=compensation_reason or "Compensation update",
         )
+    ensure_employee_org_defaults(db, employee)
     db.commit()
     db.refresh(employee)
     record_audit(
@@ -111,7 +132,13 @@ def update_employee(db: Session, employee: Employee, payload: EmployeeUpdate, ac
         table_name="employees",
         record_id=employee.id,
         old_value=previous,
-        new_value={"full_name": employee.full_name, "status": employee.status, "department": employee.department},
+        new_value={
+            "full_name": employee.full_name,
+            "status": employee.status,
+            "department": employee.department,
+            "employee_code": employee.employee_code,
+            "password_reset": bool(new_password),
+        },
         actor=actor,
     )
     return employee

@@ -1,4 +1,5 @@
 import base64
+import shutil
 from pathlib import Path
 
 from deepface import DeepFace
@@ -10,6 +11,8 @@ FACES_DIR = BASE_DIR / "app" / "employees_faces"
 
 def register_employee_face(employee_id: str, frames_b64: list[str]) -> int:
     folder = FACES_DIR / employee_id
+    if folder.exists():
+        shutil.rmtree(folder)
     folder.mkdir(parents=True, exist_ok=True)
     for index, frame in enumerate(frames_b64, start=1):
         img_bytes = base64.b64decode(frame.split(",")[-1])

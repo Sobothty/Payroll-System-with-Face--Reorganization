@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session, joinedload
 
-from app.database import get_db
+from app.config.database import get_db
 from app.models import PayrollDetail, User
 from app.security import get_current_user, require_role
 

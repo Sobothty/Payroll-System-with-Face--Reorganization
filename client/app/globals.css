@@ -185,6 +185,12 @@ textarea {
   padding: 8px 12px;
 }
 
+.badge-warning {
+  border-color: rgba(245, 158, 11, 0.35);
+  background: rgba(245, 158, 11, 0.12);
+  color: #92400e;
+}
+
 .page-shell {
   padding-top: 22px;
 }
@@ -317,6 +323,14 @@ textarea {
 
 .list-table td {
   padding: 14px;
+}
+
+.table-card-title {
+  margin: 0 0 10px;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-transform: uppercase;
 }
 
 .status-active {

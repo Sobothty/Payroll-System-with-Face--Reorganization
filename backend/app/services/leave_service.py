@@ -2,7 +2,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.models import Employee, LeaveBalance, LeaveRequest, User
-from app.schemas import LeaveRequestCreate
+from app.schema import LeaveRequestCreate
 from app.services.audit_service import record_audit
 from app.services.notification_service import create_notification
 from app.services.settings_service import get_settings

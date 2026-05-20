@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from app.database import get_db
-from app.schemas import EmployeeCreate, EmployeeOut, EmployeeUpdate, ProfileUpdate
+from app.config.database import get_db
+from app.schema import EmployeeCreate, EmployeeOut, EmployeeUpdate, ProfileUpdate
 from app.security import get_current_user, require_role
 from app.services.employee_service import (
     create_employee,

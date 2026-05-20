@@ -38,14 +38,18 @@ export type AttendanceSummary = {
 
 export type PayrollPreviewRow = {
   employee_id: string;
+  employee_code: string;
   employee_name: string;
   department: string;
+  position: string;
   pay_type: string;
   base_salary: number;
   compensation_effective_from: string;
   days_worked: number;
   hours_worked: number;
   overtime_hours: number;
+  late_minutes: number;
+  gross_before_adjustments: number;
   gross: number;
   tax: number;
   insurance: number;
@@ -53,15 +57,24 @@ export type PayrollPreviewRow = {
   loan_deduction: number;
   bonus: number;
   allowance: number;
+  total_earnings: number;
+  total_deductions: number;
   net: number;
+  earning_lines: PayrollComponentLine[];
+  deduction_lines: PayrollComponentLine[];
 };
 
 export type PayrollRunSummary = {
   id: number;
+  pay_period_id?: number | null;
   period_start: string;
   period_end: string;
   run_date: string;
   processed_by: string;
+  department_scope?: string | null;
+  pay_cycle?: string;
+  currency?: string;
+  calculation_version?: string;
   status: string;
   approved_by?: string | null;
   approved_at?: string | null;
@@ -72,6 +85,46 @@ export type PayrollRunSummary = {
   total_gross: number;
   total_deductions: number;
   total_net: number;
+  employee_count?: number;
+};
+
+export type PayrollComponentLine = {
+  component_type_id?: number | null;
+  code: string;
+  name: string;
+  category: string;
+  amount: number;
+  source: string;
+  quantity?: number | null;
+  rate?: number | null;
+  taxable?: boolean;
+};
+
+export type PayrollPayPeriod = {
+  id: number;
+  code: string;
+  name: string;
+  frequency: string;
+  period_start: string;
+  period_end: string;
+  pay_date?: string | null;
+  status: string;
+  is_locked: boolean;
+};
+
+export type PayrollSetup = {
+  departments: string[];
+  pay_cycle: string;
+  currency: string;
+  component_types: {
+    id: number;
+    code: string;
+    name: string;
+    category: string;
+    calculation_mode: string;
+    is_taxable: boolean;
+  }[];
+  pay_periods: PayrollPayPeriod[];
 };
 
 export type Payslip = {
