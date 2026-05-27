@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from weasyprint import HTML
 
 from app.models import AttendanceLog, AuditLog, LeaveRequest, PayrollDetail, PayrollRun
+from app.services.leave_service import count_leave_workdays
 
 
 EXPORT_DIR = Path(__file__).resolve().parents[2] / "generated" / "reports"
@@ -51,11 +52,14 @@ def build_report_rows(db: Session, report_type: str) -> list[dict]:
         rows = db.query(LeaveRequest).all()
         return [
             {
+                "id": row.id,
                 "employee_id": row.employee_id,
                 "leave_type": row.leave_type,
                 "start_date": row.start_date,
                 "end_date": row.end_date,
+                "leave_days": count_leave_workdays(row.start_date, row.end_date),
                 "status": row.status,
+                "approved_by": row.approved_by,
             }
             for row in rows
         ]

@@ -1,5 +1,5 @@
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, time
 
 from sqlalchemy import Boolean, Column, Date, DateTime, Float, ForeignKey, Integer, Numeric, String, Text, Time, UniqueConstraint
 from sqlalchemy.orm import relationship
@@ -449,6 +449,8 @@ class SystemSetting(Base):
     logo_url = Column(String(255), nullable=True)
     address = Column(Text, nullable=True)
     currency = Column(String(20), nullable=False, default="USD")
+    check_in_time = Column(Time, nullable=False, default=time(hour=9, minute=0))
+    check_out_time = Column(Time, nullable=False, default=time(hour=17, minute=0))
     hours_per_day = Column(Float, nullable=False, default=8)
     days_per_week = Column(Float, nullable=False, default=5)
     overtime_multiplier = Column(Float, nullable=False, default=1.5)
@@ -475,3 +477,15 @@ class EmployeeCompensationHistory(Base):
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
     employee = relationship("Employee", back_populates="compensation_history")
+
+
+class TaxBracket(Base):
+    __tablename__ = "tax_brackets"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    min_salary = Column(Numeric(12, 2), nullable=False)
+    max_salary = Column(Numeric(12, 2), nullable=True)
+    tax_rate = Column(Float, nullable=False, default=0.0)
+    is_active = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)

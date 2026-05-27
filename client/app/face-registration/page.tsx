@@ -3,8 +3,9 @@
 import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
-import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
+import { AppPageShell } from "@/components/app-page-shell";
+import { Button } from "@/components/ui/legacy-button";
+import { Card } from "@/components/ui/legacy-card";
 import { apiFetch } from "@/lib/api";
 import type { Employee } from "@/lib/types";
 
@@ -55,15 +56,39 @@ function FaceRegistrationContent() {
 
   const currentAngle = frames.length;
   const progress = Math.min((frames.length / 10) * 100, 100);
+  const visibleSteps = angleInstructions.slice(0, Math.min(frames.length + 1, angleInstructions.length));
+  const currentStepNumber = Math.min(frames.length + 1, angleInstructions.length);
+  const stepHelperText =
+    frames.length < angleInstructions.length
+      ? `Step ${currentStepNumber} of ${angleInstructions.length}. The next step appears after you capture the current one.`
+      : `All ${angleInstructions.length} steps are captured. You can retake the last frame or save the registration.`;
 
   function captureFrame() {
     if (!videoRef.current || frames.length >= 10) return;
     setFeedback(null);
+    const video = videoRef.current;
+    if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA || !video.videoWidth || !video.videoHeight) {
+      setFeedback({ type: "error", message: "Camera frame is not ready yet. Wait a moment and try again." });
+      return;
+    }
+
     const canvas = document.createElement("canvas");
-    canvas.width = 640;
-    canvas.height = 480;
-    canvas.getContext("2d")?.drawImage(videoRef.current, 0, 0);
-    setFrames((prev) => [...prev, canvas.toDataURL("image/jpeg", 0.9)]);
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const context = canvas.getContext("2d");
+    if (!context) {
+      setFeedback({ type: "error", message: "Unable to access the image buffer. Please try again." });
+      return;
+    }
+
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
+    if (!dataUrl.startsWith("data:image/jpeg;base64,") || dataUrl.endsWith(",")) {
+      setFeedback({ type: "error", message: "Captured frame is empty. Reposition and capture again." });
+      return;
+    }
+
+    setFrames((prev) => [...prev, dataUrl]);
   }
 
   function retakeLast() {
@@ -81,9 +106,8 @@ function FaceRegistrationContent() {
       });
       setFeedback({ type: "success", message: replaceMode ? "Face registration replaced successfully." : "Face registration saved successfully." });
       router.push("/employees");
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Unable to save face registration.";
-      setFeedback({ type: "error", message });
+    } catch {
+      // Toast is shown by apiFetch.
     } finally {
       setSaving(false);
     }
@@ -171,11 +195,12 @@ function FaceRegistrationContent() {
           </div>
 
           <div className="checklist">
-            {angleInstructions.map((item, index) => {
+            <p className="helper-text">{stepHelperText}</p>
+            {visibleSteps.map((item, index) => {
               const done = index < frames.length;
               const active = index === frames.length && frames.length < 10;
               return (
-                <div key={item} className={`checklist-item ${done ? "done" : ""} ${active ? "active" : ""}`}>
+                <div key={item} className={`checklist-item motion-rise ${done ? "done" : ""} ${active ? "active" : ""}`}>
                   <span>{index + 1}. {item}</span>
                   <strong>{done ? "✓" : "Pending"}</strong>
                 </div>
@@ -207,8 +232,12 @@ function FaceRegistrationContent() {
 
 export default function FaceRegistrationPage() {
   return (
-    <Suspense fallback={<div className="surface-card">Loading face registration...</div>}>
-      <FaceRegistrationContent />
-    </Suspense>
+    <AppPageShell pathname="/face-registration">
+      <div className="px-4 lg:px-6">
+        <Suspense fallback={<div className="surface-card">Loading face registration...</div>}>
+          <FaceRegistrationContent />
+        </Suspense>
+      </div>
+    </AppPageShell>
   );
 }

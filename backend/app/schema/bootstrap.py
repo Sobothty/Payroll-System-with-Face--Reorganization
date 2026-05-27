@@ -16,6 +16,17 @@ def bootstrap_phase2a_schema(engine: Engine) -> None:
                 with engine.begin() as connection:
                     connection.execute(text(statement))
 
+    if "system_settings" in inspector.get_table_names():
+        existing = {column["name"] for column in inspector.get_columns("system_settings")}
+        additions = [
+            ("ALTER TABLE system_settings ADD COLUMN check_in_time TIME NOT NULL DEFAULT '09:00:00'", "check_in_time"),
+            ("ALTER TABLE system_settings ADD COLUMN check_out_time TIME NOT NULL DEFAULT '17:00:00'", "check_out_time"),
+        ]
+        for statement, needed in additions:
+            if needed not in existing:
+                with engine.begin() as connection:
+                    connection.execute(text(statement))
+
     if "payroll_runs" in inspector.get_table_names():
         existing = {column["name"] for column in inspector.get_columns("payroll_runs")}
         additions = [

@@ -1,11 +1,13 @@
 "use client";
 
 import { getToken } from "@/lib/auth";
+import { showErrorToast } from "@/lib/toast";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
+const API_BASE = "/api/backend";
 
 type ApiOptions = RequestInit & {
   auth?: boolean;
+  notifyOnError?: boolean;
 };
 
 export async function apiFetch<T>(path: string, options: ApiOptions = {}): Promise<T> {
@@ -26,18 +28,25 @@ export async function apiFetch<T>(path: string, options: ApiOptions = {}): Promi
 
   if (!response.ok) {
     const contentType = response.headers.get("content-type") ?? "";
+    let detail = "Request failed";
     if (contentType.includes("application/json")) {
       const data = await response.json().catch(() => null);
-      const detail =
+      detail =
         typeof data?.detail === "string"
           ? data.detail
           : typeof data?.message === "string"
             ? data.message
             : JSON.stringify(data);
-      throw new Error(detail || "Request failed");
+    } else {
+      const text = await response.text();
+      detail = text || "Request failed";
     }
-    const text = await response.text();
-    throw new Error(text || "Request failed");
+
+    if (options.notifyOnError !== false) {
+      showErrorToast(detail || "Request failed");
+    }
+
+    throw new Error(detail || "Request failed");
   }
 
   const contentType = response.headers.get("content-type") ?? "";

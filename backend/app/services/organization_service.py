@@ -53,13 +53,19 @@ def ensure_default_org_structure(db: Session) -> dict[str, object]:
             legal_entity_id=legal_entity.id,
             code=DEFAULT_SHIFT_CODE,
             name="Standard Day Shift",
-            start_time=time(hour=9, minute=0),
-            end_time=time(hour=17, minute=0),
+            start_time=settings.check_in_time,
+            end_time=settings.check_out_time,
             break_minutes=60,
             standard_hours=float(settings.hours_per_day),
-            crosses_midnight=False,
+            crosses_midnight=settings.check_out_time <= settings.check_in_time,
         )
         db.add(shift)
+        db.flush()
+    else:
+        shift.start_time = settings.check_in_time
+        shift.end_time = settings.check_out_time
+        shift.standard_hours = float(settings.hours_per_day)
+        shift.crosses_midnight = settings.check_out_time <= settings.check_in_time
         db.flush()
 
     policy = (

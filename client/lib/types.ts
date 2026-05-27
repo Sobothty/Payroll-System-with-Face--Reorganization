@@ -112,6 +112,17 @@ export type PayrollPayPeriod = {
   is_locked: boolean;
 };
 
+export type TaxBracket = {
+  id: number;
+  min_salary: number;
+  max_salary: number | null;
+  tax_rate: number;
+  tax_percent: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
 export type PayrollSetup = {
   departments: string[];
   pay_cycle: string;
@@ -125,6 +136,16 @@ export type PayrollSetup = {
     is_taxable: boolean;
   }[];
   pay_periods: PayrollPayPeriod[];
+  tax_brackets: TaxBracket[];
+};
+
+export type TaxBracketUpdatePayload = {
+  brackets: {
+    min_salary: number;
+    max_salary: number | null;
+    tax_rate: number;
+    is_active: boolean;
+  }[];
 };
 
 export type Payslip = {
@@ -143,6 +164,8 @@ export type Settings = {
   logo_url?: string | null;
   address?: string | null;
   currency: string;
+  check_in_time: string;
+  check_out_time: string;
   hours_per_day: number;
   days_per_week: number;
   overtime_multiplier: number;
@@ -160,9 +183,11 @@ export type Settings = {
 export type LeaveItem = {
   id: number;
   employee_id: string;
+  employee_name?: string | null;
   leave_type: string;
   start_date: string;
   end_date: string;
+  leave_days?: number;
   status: string;
   approved_by?: string | null;
   reason?: string | null;

@@ -2,9 +2,10 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 
-import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
-import { Field } from "@/components/ui/Field";
+import { AppPageShell } from "@/components/app-page-shell";
+import { Button } from "@/components/ui/legacy-button";
+import { Card } from "@/components/ui/legacy-card";
+import { Field } from "@/components/ui/legacy-field";
 import { apiFetch } from "@/lib/api";
 import type { AttendanceCorrection, SelfServiceOverview } from "@/lib/types";
 
@@ -44,7 +45,31 @@ export default function SelfServiceAttendancePage() {
   }
 
   useEffect(() => {
-    load().catch(() => undefined);
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const [overviewRes, attendanceRes, correctionRes] = await Promise.all([
+          apiFetch<SelfServiceOverview>("/api/self-service/overview"),
+          apiFetch<AttendanceRow[]>("/api/attendance"),
+          apiFetch<AttendanceCorrection[]>("/api/attendance/corrections"),
+        ]);
+
+        if (cancelled) {
+          return;
+        }
+
+        setOverview(overviewRes);
+        setAttendance(attendanceRes);
+        setCorrections(correctionRes);
+      } catch {
+        // Toast is shown by apiFetch.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const attendanceMap = useMemo(() => attendance.reduce<Record<string, AttendanceRow>>((acc, row) => {
@@ -80,7 +105,8 @@ export default function SelfServiceAttendancePage() {
   }
 
   return (
-    <div className="form-grid">
+    <AppPageShell pathname="/self-service/attendance">
+      <div className="form-grid px-4 lg:px-6">
       <div className="grid-three">
         <Card><div className="stat-card"><div className="stat-label">Days Logged</div><div className="stat-value">{overview?.monthly_days_worked ?? 0}</div></div></Card>
         <Card><div className="stat-card"><div className="stat-label">Late Count</div><div className="stat-value">{overview?.monthly_late_count ?? 0}</div></div></Card>
@@ -160,6 +186,7 @@ export default function SelfServiceAttendancePage() {
           </div>
         </Card>
       </div>
-    </div>
+      </div>
+    </AppPageShell>
   );
 }

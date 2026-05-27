@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Depends
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.config.database import get_db
 from app.models import Employee, LeaveRequest
 from app.schema import LeaveApprovalRequest, LeaveRequestCreate
 from app.security import get_current_user, require_role
-from app.services.leave_service import create_leave_request, ensure_leave_balance, get_leave_or_404, update_leave_status
+from app.services.leave_service import count_leave_workdays, create_leave_request, ensure_leave_balance, get_leave_or_404, update_leave_status
 
 
 router = APIRouter(prefix="/api/leave", tags=["leave"])
@@ -13,7 +13,7 @@ router = APIRouter(prefix="/api/leave", tags=["leave"])
 
 @router.get("")
 def index(current_user=Depends(get_current_user), db: Session = Depends(get_db)):
-    query = db.query(LeaveRequest)
+    query = db.query(LeaveRequest).options(joinedload(LeaveRequest.employee))
     if current_user.role != "admin":
         query = query.filter(LeaveRequest.employee_id == current_user.employee_id)
     rows = query.order_by(LeaveRequest.id.desc()).all()
@@ -21,9 +21,11 @@ def index(current_user=Depends(get_current_user), db: Session = Depends(get_db))
         {
             "id": row.id,
             "employee_id": row.employee_id,
+            "employee_name": row.employee.full_name if row.employee else None,
             "leave_type": row.leave_type,
             "start_date": row.start_date,
             "end_date": row.end_date,
+            "leave_days": count_leave_workdays(row.start_date, row.end_date),
             "status": row.status,
             "approved_by": row.approved_by,
             "reason": row.reason,

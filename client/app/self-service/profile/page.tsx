@@ -1,10 +1,11 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useEffectEvent, useState } from "react";
 
-import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
-import { Field } from "@/components/ui/Field";
+import { AppPageShell } from "@/components/app-page-shell";
+import { Button } from "@/components/ui/legacy-button";
+import { Card } from "@/components/ui/legacy-card";
+import { Field } from "@/components/ui/legacy-field";
 import { apiFetch } from "@/lib/api";
 
 const TELEGRAM_CONNECT_TOKEN_KEY = "pulseledger_telegram_connect_token";
@@ -67,15 +68,82 @@ export default function SelfServiceProfilePage() {
     setConnectStatus("idle");
   }
 
+  async function checkTelegramStatus(silent = false) {
+    if (!connectToken) return;
+    try {
+      const result = await apiFetch<{ status: string; telegram_username?: string | null }>(`/api/telegram/connect/${connectToken}`, {
+        notifyOnError: !silent,
+      });
+      if (result.status === "connected") {
+        setConnectStatus("connected");
+        setConnectToken("");
+        window.localStorage.removeItem(TELEGRAM_CONNECT_TOKEN_KEY);
+        setTelegramStatus(`Telegram connected${result.telegram_username ? ` as @${result.telegram_username}` : ""}.`);
+        await load();
+      } else if (!silent) {
+        setTelegramStatus("Waiting for Telegram bot confirmation.");
+      }
+    } catch {
+      // Toast is shown by apiFetch unless this was a silent poll.
+    }
+  }
+
+  const pollTelegramStatus = useEffectEvent(() => {
+    checkTelegramStatus(true).catch(() => undefined);
+  });
+
   useEffect(() => {
-    load().catch(() => undefined);
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const [meRes, telegramMeta] = await Promise.all([
+          apiFetch<MePayload>("/api/auth/me"),
+          apiFetch<{ bot_username: string }>("/api/self-service/telegram/meta"),
+        ]);
+
+        if (cancelled) {
+          return;
+        }
+
+        setMe(meRes);
+        setBotUsername(telegramMeta.bot_username);
+        setProfile({
+          email: meRes.employee?.email ?? "",
+          phone: meRes.employee?.phone ?? "",
+          telegram_notifications_enabled: meRes.employee?.telegram_notifications_enabled ?? false,
+        });
+
+        if (meRes.employee?.telegram_chat_id) {
+          setConnectStatus("connected");
+          setConnectToken("");
+          window.localStorage.removeItem(TELEGRAM_CONNECT_TOKEN_KEY);
+          return;
+        }
+
+        const storedToken = window.localStorage.getItem(TELEGRAM_CONNECT_TOKEN_KEY) ?? "";
+        if (storedToken) {
+          setConnectToken(storedToken);
+          setConnectStatus("pending");
+          return;
+        }
+
+        setConnectStatus("idle");
+      } catch {
+        // Toast is shown by apiFetch.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
     if (connectStatus !== "pending" || !connectToken) return;
 
     const intervalId = window.setInterval(() => {
-      checkTelegramStatus(true).catch(() => undefined);
+      pollTelegramStatus();
     }, 2000);
 
     return () => window.clearInterval(intervalId);
@@ -98,8 +166,8 @@ export default function SelfServiceProfilePage() {
     try {
       const result = await apiFetch<{ status: string }>("/api/self-service/telegram/test", { method: "POST" });
       setTelegramStatus(result.status === "sent" ? "Telegram test message sent." : "Telegram test did not send.");
-    } catch (error) {
-      setTelegramStatus(error instanceof Error ? error.message : "Telegram test failed.");
+    } catch {
+      // Toast is shown by apiFetch.
     }
   }
 
@@ -111,28 +179,8 @@ export default function SelfServiceProfilePage() {
       window.localStorage.setItem(TELEGRAM_CONNECT_TOKEN_KEY, result.start_token);
       window.open(result.connect_url, "_blank", "noopener,noreferrer");
       setTelegramStatus("Telegram connect started. Press Start in Telegram. This page will link automatically.");
-    } catch (error) {
-      setTelegramStatus(error instanceof Error ? error.message : "Unable to start Telegram connect.");
-    }
-  }
-
-  async function checkTelegramStatus(silent = false) {
-    if (!connectToken) return;
-    try {
-      const result = await apiFetch<{ status: string; telegram_username?: string | null }>(`/api/telegram/connect/${connectToken}`);
-      if (result.status === "connected") {
-        setConnectStatus("connected");
-        setConnectToken("");
-        window.localStorage.removeItem(TELEGRAM_CONNECT_TOKEN_KEY);
-        setTelegramStatus(`Telegram connected${result.telegram_username ? ` as @${result.telegram_username}` : ""}.`);
-        await load();
-      } else if (!silent) {
-        setTelegramStatus("Waiting for Telegram bot confirmation.");
-      }
-    } catch (error) {
-      if (!silent) {
-        setTelegramStatus(error instanceof Error ? error.message : "Unable to check Telegram status.");
-      }
+    } catch {
+      // Toast is shown by apiFetch.
     }
   }
 
@@ -144,13 +192,14 @@ export default function SelfServiceProfilePage() {
       window.localStorage.removeItem(TELEGRAM_CONNECT_TOKEN_KEY);
       setTelegramStatus("Telegram disconnected.");
       await load();
-    } catch (error) {
-      setTelegramStatus(error instanceof Error ? error.message : "Unable to disconnect Telegram.");
+    } catch {
+      // Toast is shown by apiFetch.
     }
   }
 
   return (
-    <div className="form-grid">
+    <AppPageShell pathname="/self-service/profile">
+      <div className="form-grid px-4 lg:px-6">
       <Card>
         <div className="header-row">
           <div>
@@ -214,6 +263,7 @@ export default function SelfServiceProfilePage() {
           <Button type="submit">Change Password</Button>
         </form>
       </Card>
-    </div>
+      </div>
+    </AppPageShell>
   );
 }

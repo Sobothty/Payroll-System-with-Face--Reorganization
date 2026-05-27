@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -26,7 +28,23 @@ def ensure_leave_balance(db: Session, employee: Employee) -> LeaveBalance:
     return balance
 
 
+def count_leave_workdays(start_date, end_date) -> int:
+    if end_date < start_date:
+        return 0
+
+    total = 0
+    current = start_date
+    while current <= end_date:
+        if current.weekday() < 5:
+            total += 1
+        current += timedelta(days=1)
+    return total
+
+
 def create_leave_request(db: Session, payload: LeaveRequestCreate, actor: User | None = None) -> LeaveRequest:
+    if payload.end_date < payload.start_date:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Leave end date must be on or after start date")
+
     leave = LeaveRequest(**payload.model_dump())
     db.add(leave)
     employee = db.query(Employee).filter(Employee.id == leave.employee_id).first()
@@ -66,14 +84,23 @@ def update_leave_status(db: Session, leave: LeaveRequest, status_value: str, app
     leave.approved_by = approver
     employee = db.query(Employee).filter(Employee.id == leave.employee_id).first()
     balance = ensure_leave_balance(db, employee) if employee else None
-    leave_days = max((leave.end_date - leave.start_date).days + 1, 0)
-    if previous_status != "approved" and status_value == "approved" and balance is not None:
-        if leave.leave_type == "annual":
-            balance.annual_remaining = max(0, round(balance.annual_remaining - leave_days, 2))
-        elif leave.leave_type == "sick":
-            balance.sick_remaining = max(0, round(balance.sick_remaining - leave_days, 2))
-        elif leave.leave_type == "unpaid":
-            balance.unpaid_used = round(balance.unpaid_used + leave_days, 2)
+    leave_days = count_leave_workdays(leave.start_date, leave.end_date)
+    if balance is not None:
+        if previous_status == "approved" and status_value != "approved":
+            if leave.leave_type == "annual":
+                balance.annual_remaining = round(balance.annual_remaining + leave_days, 2)
+            elif leave.leave_type == "sick":
+                balance.sick_remaining = round(balance.sick_remaining + leave_days, 2)
+            elif leave.leave_type == "unpaid":
+                balance.unpaid_used = max(0, round(balance.unpaid_used - leave_days, 2))
+
+        if previous_status != "approved" and status_value == "approved":
+            if leave.leave_type == "annual":
+                balance.annual_remaining = max(0, round(balance.annual_remaining - leave_days, 2))
+            elif leave.leave_type == "sick":
+                balance.sick_remaining = max(0, round(balance.sick_remaining - leave_days, 2))
+            elif leave.leave_type == "unpaid":
+                balance.unpaid_used = round(balance.unpaid_used + leave_days, 2)
     db.commit()
     db.refresh(leave)
     record_audit(

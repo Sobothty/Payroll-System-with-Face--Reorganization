@@ -2,9 +2,10 @@
 
 import { FormEvent, useEffect, useState } from "react";
 
-import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
-import { Field } from "@/components/ui/Field";
+import { AppPageShell } from "@/components/app-page-shell";
+import { Button } from "@/components/ui/legacy-button";
+import { Card } from "@/components/ui/legacy-card";
+import { Field } from "@/components/ui/legacy-field";
 import { apiFetch } from "@/lib/api";
 import type { LeaveBalance, LeaveItem } from "@/lib/types";
 
@@ -32,7 +33,31 @@ export default function SelfServiceLeavePage() {
   }
 
   useEffect(() => {
-    load().catch(() => undefined);
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const [meRes, balanceRes, leaveRes] = await Promise.all([
+          apiFetch<MePayload>("/api/auth/me"),
+          apiFetch<LeaveBalance>("/api/self-service/leave-balance"),
+          apiFetch<LeaveItem[]>("/api/leave"),
+        ]);
+
+        if (cancelled) {
+          return;
+        }
+
+        setMe(meRes);
+        setLeaveBalance(balanceRes);
+        setLeaveItems(leaveRes);
+      } catch {
+        // Toast is shown by apiFetch.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   async function submitLeave(event: FormEvent<HTMLFormElement>) {
@@ -47,7 +72,8 @@ export default function SelfServiceLeavePage() {
   }
 
   return (
-    <div className="form-grid">
+    <AppPageShell pathname="/self-service/leave">
+      <div className="form-grid px-4 lg:px-6">
       <Card>
         <h2 className="section-heading">Leave Balance</h2>
         <div className="grid-three">
@@ -98,6 +124,7 @@ export default function SelfServiceLeavePage() {
           </div>
         </Card>
       </div>
-    </div>
+      </div>
+    </AppPageShell>
   );
 }

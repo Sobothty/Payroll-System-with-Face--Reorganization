@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, time
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
@@ -130,6 +130,30 @@ class PayrollRunRequest(PayrollCalculateRequest):
     correction_of_run_id: int | None = None
 
 
+class TaxBracketPayload(BaseModel):
+    min_salary: float = Field(ge=0)
+    max_salary: float | None = Field(default=None, ge=0)
+    tax_rate: float = Field(ge=0, le=100)
+    is_active: bool = True
+
+
+class TaxBracketUpdateRequest(BaseModel):
+    brackets: list[TaxBracketPayload] = Field(min_length=1)
+
+
+class TaxBracketOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    min_salary: float
+    max_salary: float | None
+    tax_rate: float
+    tax_percent: float
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
 class LeaveRequestCreate(BaseModel):
     employee_id: str
     leave_type: str
@@ -219,6 +243,8 @@ class SettingsPayload(BaseModel):
     logo_url: str | None = None
     address: str | None = None
     currency: str
+    check_in_time: time
+    check_out_time: time
     hours_per_day: float
     days_per_week: float
     overtime_multiplier: float

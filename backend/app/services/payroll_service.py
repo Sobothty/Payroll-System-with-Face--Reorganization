@@ -1,5 +1,5 @@
 from collections import defaultdict
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 
 from fastapi import HTTPException, status
@@ -15,13 +15,15 @@ from app.models import (
     PayrollDetail,
     PayrollDetailLine,
     PayrollRun,
+    TaxBracket,
     User,
 )
-from app.schema import PayrollRunRequest
+from app.schema import PayrollRunRequest, TaxBracketPayload
 from app.services.audit_service import record_audit
 from app.services.compensation_service import resolve_compensation_for_period
 from app.services.payslip_service import generate_payslip_pdf
 from app.services.settings_service import get_settings
+from app.services.tax_calculator import calculate_cambodia_tax
 
 
 DEFAULT_COMPONENT_TYPES = [
@@ -66,6 +68,93 @@ def ensure_default_payroll_component_types(db: Session) -> None:
         created = True
     if created:
         db.commit()
+
+
+def ensure_default_cambodia_tax_brackets(db: Session) -> None:
+    existing_count = db.query(TaxBracket).count()
+    if existing_count > 0:
+        return
+
+    default_brackets = [
+        TaxBracket(min_salary=Decimal("0.00"), max_salary=Decimal("1500000.00"), tax_rate=0.00, is_active=True),
+        TaxBracket(min_salary=Decimal("1500000.00"), max_salary=Decimal("2000000.00"), tax_rate=0.05, is_active=True),
+        TaxBracket(min_salary=Decimal("2000000.00"), max_salary=Decimal("8500000.00"), tax_rate=0.10, is_active=True),
+        TaxBracket(min_salary=Decimal("8500000.00"), max_salary=Decimal("12500000.00"), tax_rate=0.15, is_active=True),
+        TaxBracket(min_salary=Decimal("12500000.00"), max_salary=None, tax_rate=0.20, is_active=True),
+    ]
+    for bracket in default_brackets:
+        db.add(bracket)
+    db.commit()
+
+
+def _normalize_tax_rate(rate: float | int | Decimal) -> float:
+    decimal_rate = Decimal(str(rate))
+    if decimal_rate > Decimal("1.00"):
+        decimal_rate = decimal_rate / Decimal("100")
+    return float(decimal_rate.quantize(Decimal("0.0001"), rounding=ROUND_HALF_UP))
+
+
+def _serialize_tax_bracket(bracket: TaxBracket) -> dict:
+    return {
+        "id": bracket.id,
+        "min_salary": _money(bracket.min_salary),
+        "max_salary": _money(bracket.max_salary) if bracket.max_salary is not None else None,
+        "tax_rate": float(bracket.tax_rate),
+        "tax_percent": float(Decimal(str(bracket.tax_rate)) * Decimal("100")),
+        "is_active": bracket.is_active,
+        "created_at": bracket.created_at,
+        "updated_at": bracket.updated_at,
+    }
+
+
+def list_tax_brackets(db: Session) -> list[dict]:
+    ensure_default_cambodia_tax_brackets(db)
+    brackets = db.query(TaxBracket).order_by(TaxBracket.min_salary.asc(), TaxBracket.id.asc()).all()
+    return [_serialize_tax_bracket(bracket) for bracket in brackets]
+
+
+def replace_tax_brackets(db: Session, brackets: list[TaxBracketPayload]) -> list[dict]:
+    if not brackets:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="At least one tax bracket is required")
+
+    normalized = sorted(brackets, key=lambda row: (row.min_salary, float("inf") if row.max_salary is None else row.max_salary))
+    active_brackets = [row for row in normalized if row.is_active]
+
+    if not active_brackets:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="At least one active tax bracket is required")
+    if _decimal(active_brackets[0].min_salary) != Decimal("0.00"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="The first active tax bracket must start at 0 riel")
+
+    previous_max: Decimal | None = None
+    for index, row in enumerate(active_brackets):
+        min_salary = _decimal(row.min_salary)
+        max_salary = _decimal(row.max_salary) if row.max_salary is not None else None
+        if previous_max is not None and min_salary != previous_max:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Active tax brackets must be continuous without gaps or overlaps",
+            )
+        if max_salary is not None and max_salary <= min_salary:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Each tax bracket max salary must be greater than min salary")
+        if max_salary is None and index != len(active_brackets) - 1:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only the final active tax bracket can have no max salary")
+        previous_max = max_salary
+
+    if previous_max is not None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="The final active tax bracket must be open-ended")
+
+    db.query(TaxBracket).delete(synchronize_session=False)
+    for row in normalized:
+        db.add(
+            TaxBracket(
+                min_salary=_decimal(row.min_salary),
+                max_salary=_decimal(row.max_salary) if row.max_salary is not None else None,
+                tax_rate=_normalize_tax_rate(row.tax_rate),
+                is_active=row.is_active,
+            )
+        )
+    db.commit()
+    return list_tax_brackets(db)
 
 
 def _get_component_type_map(db: Session) -> dict[str, PayrollComponentType]:
@@ -163,8 +252,23 @@ def _component_line(
     }
 
 
+def _count_weekdays(period_start: date, period_end: date) -> int:
+    total = 0
+    current = period_start
+    while current <= period_end:
+        if current.weekday() < 5:
+            total += 1
+        current += timedelta(days=1)
+    return total
+
+
+def _count_present_weekdays(attendance: list[AttendanceLog]) -> int:
+    return len({log.date for log in attendance if log.date.weekday() < 5})
+
+
 def get_payroll_setup(db: Session) -> dict:
     ensure_default_payroll_component_types(db)
+    ensure_default_cambodia_tax_brackets(db)
     settings = get_settings(db)
     departments = [row[0] for row in db.query(Employee.department).filter(Employee.status == "active").distinct().order_by(Employee.department).all()]
     pay_periods = db.query(PayPeriod).order_by(PayPeriod.period_end.desc()).limit(12).all()
@@ -173,6 +277,7 @@ def get_payroll_setup(db: Session) -> dict:
         "departments": departments,
         "pay_cycle": settings.pay_cycle,
         "currency": settings.currency,
+        "tax_brackets": list_tax_brackets(db),
         "component_types": [
             {
                 "id": row.id,
@@ -219,6 +324,8 @@ def calculate_payroll(db: Session, *, period_start, period_end, department: str 
     component_types = _get_component_type_map(db)
     settings = get_settings(db)
     adjustment_map = _collect_adjustments(adjustments)
+    ensure_default_cambodia_tax_brackets(db)
+    tax_brackets = db.query(TaxBracket).filter(TaxBracket.is_active == True).all()  # noqa: E712
 
     legal_entity_ids = {employee.legal_entity_id for employee in employees if employee.legal_entity_id}
     branch_ids = {employee.branch_id for employee in employees if employee.branch_id}
@@ -240,7 +347,8 @@ def calculate_payroll(db: Session, *, period_start, period_end, department: str 
             .filter(AttendanceLog.employee_id == employee.id, AttendanceLog.date >= period_start, AttendanceLog.date <= period_end)
             .all()
         )
-        days_worked = len(attendance)
+        working_days_in_period = _count_weekdays(period_start, period_end)
+        days_worked = _count_present_weekdays(attendance)
         hours_worked = round(sum(log.hours_worked or 0 for log in attendance), 2)
         overtime_hours = round(sum(log.overtime_hours or 0 for log in attendance), 2)
         late_minutes = round(sum(log.late_minutes or 0 for log in attendance), 2)
@@ -248,17 +356,24 @@ def calculate_payroll(db: Session, *, period_start, period_end, department: str 
         compensation = resolve_compensation_for_period(db, employee_id=employee.id, as_of=period_end)
         pay_type = compensation.pay_type if compensation else employee.pay_type
         base_salary = _decimal(compensation.base_salary if compensation else employee.base_salary)
+        daily_rate = Decimal("0.00")
 
         if pay_type == "monthly":
-            base_pay = base_salary
+            if working_days_in_period > 0:
+                daily_rate = _decimal(base_salary / Decimal(str(working_days_in_period)))
+                base_pay = _decimal(daily_rate * Decimal(str(days_worked)))
+            else:
+                base_pay = Decimal("0.00")
         elif pay_type == "daily":
+            daily_rate = base_salary
             base_pay = _decimal(base_salary * Decimal(str(days_worked)))
         else:
             base_pay = _decimal(base_salary * Decimal(str(hours_worked)))
 
         hourly_basis = Decimal("0.00")
         if pay_type == "monthly" and base_salary:
-            hourly_basis = _decimal(base_salary / Decimal(str(settings.hours_per_day)) / Decimal("22"))
+            weekday_divisor = Decimal(str(working_days_in_period or 1))
+            hourly_basis = _decimal(base_salary / Decimal(str(settings.hours_per_day)) / weekday_divisor)
         elif pay_type == "daily" and base_salary:
             hourly_basis = _decimal(base_salary / Decimal(str(settings.hours_per_day)))
         elif pay_type == "hourly":
@@ -364,7 +479,7 @@ def calculate_payroll(db: Session, *, period_start, period_end, department: str 
             )
 
         taxable_earnings = base_pay + overtime_pay + taxable_extra_earnings + bonus
-        tax = _decimal(taxable_earnings * Decimal(str(settings.income_tax_rate)))
+        tax = calculate_cambodia_tax(taxable_earnings, tax_brackets)
         insurance = _decimal(taxable_earnings * Decimal(str(settings.insurance_rate)))
         pension = _decimal(taxable_earnings * Decimal(str(settings.pension_rate)))
 
@@ -411,6 +526,8 @@ def calculate_payroll(db: Session, *, period_start, period_end, department: str 
                 "position": employee.position,
                 "pay_type": pay_type,
                 "base_salary": _money(base_salary),
+                "daily_rate": _money(daily_rate) if daily_rate > 0 else 0.0,
+                "working_days_in_period": working_days_in_period,
                 "compensation_effective_from": compensation.effective_from.isoformat() if compensation else employee.hire_date.isoformat(),
                 "days_worked": days_worked,
                 "hours_worked": hours_worked,

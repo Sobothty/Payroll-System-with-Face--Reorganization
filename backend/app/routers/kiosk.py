@@ -1,5 +1,6 @@
 from pathlib import Path
 from tempfile import NamedTemporaryFile
+from os import unlink
 
 from fastapi import APIRouter, Depends, File, Request, UploadFile
 from fastapi.responses import JSONResponse
@@ -30,7 +31,13 @@ async def kiosk_scan(image: UploadFile = File(...), db: Session = Depends(get_db
     with NamedTemporaryFile(delete=False, suffix=suffix) as temp:
         temp.write(await image.read())
         temp_path = temp.name
-    result = recognize_face(temp_path)
+    try:
+        result = recognize_face(temp_path)
+    finally:
+        try:
+            unlink(temp_path)
+        except OSError:
+            pass
     if result["status"] == "success":
         employee = get_employee_or_404(db, result["employee_id"])
         action, record = log_attendance(db, employee, result["confidence"])

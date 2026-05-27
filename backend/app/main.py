@@ -6,20 +6,31 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import Base, SessionLocal, engine, get_env_value
 from app.models import Employee, User
+from app.face.recognition import prime_recognition_models
 from app.routers import attendance, auth, employees, face, kiosk, leave, payroll, payslips, reports, self_service, settings, telegram
 from app.schema import bootstrap_phase2a_schema
 from app.security import hash_password
 from app.services.leave_service import ensure_leave_balance
 from app.services.organization_service import ensure_default_org_structure, ensure_employee_org_defaults
-from app.services.payroll_service import ensure_default_payroll_component_types
+from app.services.payroll_service import ensure_default_cambodia_tax_brackets, ensure_default_payroll_component_types
 from app.services.settings_service import get_settings
 
 
 app = FastAPI(title="PulseLedger Payroll Management System", version="1.0.0")
 
+
+def get_allowed_origins() -> list[str]:
+    configured = get_env_value("CORS_ALLOW_ORIGINS")
+    if configured:
+        return [origin.strip() for origin in configured.split(",") if origin.strip()]
+    return [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=get_allowed_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -52,6 +63,7 @@ def startup() -> None:
         get_settings(db)
         ensure_default_org_structure(db)
         ensure_default_payroll_component_types(db)
+        ensure_default_cambodia_tax_brackets(db)
         employees = db.query(Employee).all()
         for employee in employees:
             ensure_employee_org_defaults(db, employee)
@@ -67,6 +79,7 @@ def startup() -> None:
             )
             db.add(admin)
         db.commit()
+        prime_recognition_models()
     finally:
         db.close()
 

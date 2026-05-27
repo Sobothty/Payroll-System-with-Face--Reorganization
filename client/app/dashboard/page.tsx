@@ -1,10 +1,11 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-import { Button } from "@/components/ui/Button";
-import { Card } from "@/components/ui/Card";
+import { AppPageShell } from "@/components/app-page-shell";
+import { ChartAreaInteractive } from "@/components/chart-area-interactive";
+import { DataTable } from "@/components/data-table";
+import { SectionCards } from "@/components/section-cards";
 import { apiFetch } from "@/lib/api";
 import type { AttendanceSummary, Employee } from "@/lib/types";
 
@@ -14,158 +15,140 @@ type PayrollRun = {
   status: string;
 };
 
+function formatCurrency(amount: number) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(Number(amount || 0));
+}
+
+function formatPercent(value: number) {
+  return `${Math.max(0, Math.round(value))}%`;
+}
+
 export default function DashboardPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [summary, setSummary] = useState<AttendanceSummary | null>(null);
   const [runs, setRuns] = useState<PayrollRun[]>([]);
 
   useEffect(() => {
-    async function load() {
-      const [employeeRes, summaryRes, runRes] = await Promise.all([
-        apiFetch<{ items: Employee[] }>("/api/employees?page=1&page_size=200"),
-        apiFetch<AttendanceSummary>("/api/attendance/summary"),
-        apiFetch<PayrollRun[]>("/api/payroll/runs"),
-      ]);
-      setEmployees(employeeRes.items);
-      setSummary(summaryRes);
-      setRuns(runRes);
+    let cancelled = false;
+
+    async function hydrateDashboard() {
+      try {
+        const [employeeRes, summaryRes, runRes] = await Promise.all([
+          apiFetch<{ items: Employee[] }>("/api/employees?page=1&page_size=200"),
+          apiFetch<AttendanceSummary>("/api/attendance/summary"),
+          apiFetch<PayrollRun[]>("/api/payroll/runs"),
+        ]);
+
+        if (cancelled) {
+          return;
+        }
+
+        setEmployees(employeeRes.items);
+        setSummary(summaryRes);
+        setRuns(runRes);
+      } catch {
+        // Toast is shown by apiFetch.
+      }
     }
 
-    load().catch(() => undefined);
+    void hydrateDashboard();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const totalEmployees = employees.length;
-  const totalPayroll = runs[0]?.total_net ?? 0;
-  const pendingRuns = runs.filter((run) => run.status === "draft").length;
-  const departmentCounts = employees.reduce<Record<string, number>>((acc, employee) => {
-    acc[employee.department] = (acc[employee.department] ?? 0) + 1;
-    return acc;
-  }, {});
+  const activeEmployees = employees.filter((employee) => employee.status === "active").length;
+  const presentToday = summary?.present_today ?? 0;
+  const attendanceRate = totalEmployees ? (presentToday / totalEmployees) * 100 : 0;
+  const latestPayrollNet = runs[0]?.total_net ?? 0;
+  const draftRuns = runs.filter((run) => run.status === "draft").length;
+  const dailyAttendance = summary?.daily_attendance ?? [];
+  const recentActivity = (summary?.recent_activity ?? []).slice(0, 5);
+  const totalAttendanceThisWeek = dailyAttendance.reduce((sum, item) => sum + item.count, 0);
+  const averageAttendance = dailyAttendance.length ? Math.round(totalAttendanceThisWeek / dailyAttendance.length) : 0;
 
-  const chartColors = ["#4f8ef7", "#22c55e", "#e24b4a", "#f59e0b", "#14b8a6", "#8b5cf6"];
-  const donutStops = Object.entries(departmentCounts)
-    .map(([department, count], index, items) => {
-      const previous = items.slice(0, index).reduce((sum, [, value]) => sum + value, 0);
-      const current = previous + count;
-      const start = ((previous / totalEmployees) * 100 || 0).toFixed(2);
-      const end = ((current / totalEmployees) * 100 || 0).toFixed(2);
-      return `${chartColors[index % chartColors.length]} ${start}% ${end}%`;
-    })
-    .join(", ");
+  const departmentData = useMemo(() => {
+    const counts = employees.reduce<Record<string, number>>((accumulator, employee) => {
+      accumulator[employee.department] = (accumulator[employee.department] ?? 0) + 1;
+      return accumulator;
+    }, {});
+
+    return Object.entries(counts)
+      .sort((left, right) => right[1] - left[1])
+      .map(([department, count]) => ({
+        name: department,
+        count,
+        percent: totalEmployees ? Math.round((count / totalEmployees) * 100) : 0,
+      }));
+  }, [employees, totalEmployees]);
+
+  const metricCards = [
+    {
+      title: "Employees",
+      value: totalEmployees.toLocaleString(),
+      change: `+${activeEmployees.toLocaleString()} active`,
+      summary: "Roster remains in a healthy operating state",
+      note: `${activeEmployees.toLocaleString()} active staff across the current roster.`,
+      trend: "up" as const,
+    },
+    {
+      title: "Present Today",
+      value: presentToday.toLocaleString(),
+      change: formatPercent(attendanceRate),
+      summary: "Today’s coverage is live from attendance events",
+      note: `${formatPercent(attendanceRate)} of the workforce has checked in today.`,
+      trend: "up" as const,
+    },
+    {
+      title: "Attendance Rate",
+      value: formatPercent(attendanceRate),
+      change: `${averageAttendance.toLocaleString()} avg`,
+      summary: "Weekly attendance is holding steady",
+      note: `${averageAttendance.toLocaleString()} average daily check-ins across the current week.`,
+      trend: "up" as const,
+    },
+    {
+      title: "Payroll Net",
+      value: formatCurrency(latestPayrollNet),
+      change: draftRuns ? `${draftRuns} drafts` : "Ready",
+      summary: runs.length ? "Most recent payroll run is ready for review" : "No payroll run has been generated yet",
+      note: runs.length ? "Latest payroll net total from the most recent run." : "Generate the first payroll run to populate this metric.",
+      trend: draftRuns ? "down" as const : "up" as const,
+    },
+  ];
+
+  const attendanceSeries = (dailyAttendance.length
+    ? dailyAttendance
+    : [
+        { weekday: "Mon", count: 0 },
+        { weekday: "Tue", count: 0 },
+        { weekday: "Wed", count: 0 },
+        { weekday: "Thu", count: 0 },
+        { weekday: "Fri", count: 0 },
+      ]).map((item) => ({
+    label: item.weekday,
+    attendance: item.count,
+  }));
 
   return (
-    <div className="form-grid">
-      <div className="grid-four">
-        <Card>
-          <div className="stat-card">
-            <div className="stat-label">Total Employees</div>
-            <div className="stat-value">{totalEmployees}</div>
-          </div>
-        </Card>
-        <Card>
-          <div className="stat-card">
-            <div className="stat-label">Present Today</div>
-            <div className="stat-value">{summary?.present_today ?? 0}</div>
-          </div>
-        </Card>
-        <Card>
-          <div className="stat-card">
-            <div className="stat-label">Total Payroll This Month</div>
-            <div className="stat-value">${Number(totalPayroll).toLocaleString()}</div>
-          </div>
-        </Card>
-        <Card>
-          <div className="stat-card">
-            <div className="stat-label">Pending Payroll Runs</div>
-            <div className="stat-value">{pendingRuns}</div>
-          </div>
-        </Card>
-      </div>
-
-      <div className="grid-two">
-        <Card>
-          <h2 className="section-heading">Daily Attendance This Week</h2>
-          <div className="chart-bars">
-            {(summary?.daily_attendance ?? []).map((item) => (
-              <div key={item.weekday} className="chart-bar">
-                <span style={{ height: `${Math.max(item.count * 24, 18)}px` }} />
-                <strong>{item.count}</strong>
-                <small className="muted">{item.weekday}</small>
-              </div>
-            ))}
-          </div>
-        </Card>
-        <Card>
-          <h2 className="section-heading">Department Headcount</h2>
-          <div className="donut" style={{ background: `conic-gradient(${donutStops || "#1a1e2a 0 100%"})` }} />
-          <div className="legend-list">
-            {Object.entries(departmentCounts).map(([department, count], index) => (
-              <div key={department} className="legend-item">
-                <div>
-                  <span className="legend-dot" style={{ background: chartColors[index % chartColors.length] }} />
-                  {department}
-                </div>
-                <strong>{count}</strong>
-              </div>
-            ))}
-          </div>
-        </Card>
-      </div>
-
-      <div className="grid-two">
-        <Card>
-          <div className="header-row">
-            <h2 className="section-heading">Recent Check-ins</h2>
-            <span className="helper-text">Last 10</span>
-          </div>
-          <table className="list-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Department</th>
-                <th>Time</th>
-                <th>Action</th>
-                <th>Confidence</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(summary?.recent_activity ?? []).slice(0, 10).map((item) => (
-                <tr key={`${item.name}-${item.time}`} className="activity-row">
-                  <td>{item.name}</td>
-                  <td>{item.department}</td>
-                  <td>{item.time}</td>
-                  <td>{item.action}</td>
-                  <td>{item.confidence ? `${item.confidence}%` : "--"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
-
-        <Card>
-          <h2 className="section-heading">Quick Actions</h2>
-          <div className="form-grid">
-            <Link href="/payroll">
-              <Button className="w-full">Run Payroll</Button>
-            </Link>
-            <Link href="/employees">
-              <Button tone="secondary" className="w-full">
-                Add Employee
-              </Button>
-            </Link>
-            <Link href="/reports">
-              <Button tone="secondary" className="w-full">
-                View Reports
-              </Button>
-            </Link>
-            <Link href="/reports">
-              <Button tone="success" className="w-full">
-                Export
-              </Button>
-            </Link>
-          </div>
-        </Card>
-      </div>
-    </div>
+    <AppPageShell pathname="/dashboard">
+        <SectionCards items={metricCards} />
+        <div className="px-4 lg:px-6">
+          <ChartAreaInteractive
+            data={attendanceSeries}
+            departments={departmentData.slice(0, 4)}
+            weeklyCheckIns={totalAttendanceThisWeek}
+            attendanceRate={attendanceRate}
+            totalRuns={runs.length}
+          />
+        </div>
+        <DataTable rows={recentActivity} />
+    </AppPageShell>
   );
 }

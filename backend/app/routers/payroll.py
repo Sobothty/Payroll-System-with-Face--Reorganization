@@ -3,9 +3,16 @@ from sqlalchemy.orm import Session
 
 from app.config.database import get_db
 from app.models import PayrollRun
-from app.schema import PayrollCalculateRequest, PayrollRunRequest
+from app.schema import PayrollCalculateRequest, PayrollRunRequest, TaxBracketOut, TaxBracketUpdateRequest
 from app.security import require_role
-from app.services.payroll_service import approve_payroll_run, calculate_payroll, get_payroll_setup, run_payroll
+from app.services.payroll_service import (
+    approve_payroll_run,
+    calculate_payroll,
+    get_payroll_setup,
+    list_tax_brackets,
+    replace_tax_brackets,
+    run_payroll,
+)
 
 
 router = APIRouter(prefix="/api/payroll", tags=["payroll"])
@@ -25,6 +32,20 @@ def calculate(payload: PayrollCalculateRequest, db: Session = Depends(get_db), _
 @router.get("/setup")
 def setup(db: Session = Depends(get_db), _: object = Depends(require_role("admin", "payroll_admin", "approver"))):
     return get_payroll_setup(db)
+
+
+@router.get("/tax-brackets", response_model=list[TaxBracketOut])
+def tax_brackets(db: Session = Depends(get_db), _: object = Depends(require_role("admin", "payroll_admin", "approver"))):
+    return list_tax_brackets(db)
+
+
+@router.put("/tax-brackets", response_model=list[TaxBracketOut])
+def update_tax_brackets(
+    payload: TaxBracketUpdateRequest,
+    db: Session = Depends(get_db),
+    _: object = Depends(require_role("admin", "payroll_admin")),
+):
+    return replace_tax_brackets(db, payload.brackets)
 
 
 @router.post("/run")

@@ -1,8 +1,10 @@
 const state = {
   scanning: false,
+  startingCamera: false,
   uiMode: "idle",
   liveFace: null,
   detector: null,
+  cameraStream: null,
   trackingEnabled: false,
   detectPending: false,
   lastDetectAt: 0,
@@ -23,14 +25,15 @@ const zoomFrame = document.getElementById("zoomFrame");
 const flashOverlay = document.getElementById("flashOverlay");
 const cameraFrame = document.getElementById("cameraFrame");
 const frameChip = document.getElementById("frameChip");
+const frameSnapshot = document.getElementById("frameSnapshot");
+const liveBadge = document.getElementById("liveBadge");
+const liveBadgeLabel = document.getElementById("liveBadgeLabel");
 const clock = document.getElementById("clock");
 const dateLine = document.getElementById("dateLine");
 
 const resultBadge = document.getElementById("resultBadge");
 const resultTitle = document.getElementById("resultTitle");
 const resultMessage = document.getElementById("resultMessage");
-const nextActionPill = document.getElementById("nextActionPill");
-const modeCopy = document.getElementById("modeCopy");
 const capturePreview = document.getElementById("capturePreview");
 const snapshotPlaceholder = document.getElementById("snapshotPlaceholder");
 
@@ -97,6 +100,14 @@ function setLastSyncNow() {
   sysLastSync.textContent = new Date().toLocaleTimeString("en-GB");
 }
 
+function setLiveBadge(mode, text) {
+  liveBadge.classList.remove("warning", "error");
+  if (mode) {
+    liveBadge.classList.add(mode);
+  }
+  liveBadgeLabel.textContent = text;
+}
+
 function clearTimers() {
   clearTimeout(state.resetTimer);
   clearTimeout(state.detectedTimer);
@@ -147,8 +158,6 @@ function resetAttendancePanel() {
   resultBadge.textContent = "WAITING FOR EMPLOYEE";
   resultTitle.textContent = "Waiting for employee...";
   resultMessage.textContent = "Please align your face inside the frame.";
-  nextActionPill.textContent = "Next action pending";
-  modeCopy.textContent = "The kiosk will automatically determine check-in or check-out after recognition.";
 
   employeeName.textContent = "Waiting for employee...";
   employeeCode.textContent = "--";
@@ -177,11 +186,18 @@ function resetAttendancePanel() {
 
 function applyCapturePreview() {
   if (!state.lastCaptureDataUrl) {
+    frameSnapshot.hidden = true;
+    frameSnapshot.classList.remove("visible");
+    frameSnapshot.removeAttribute("src");
     capturePreview.hidden = true;
+    capturePreview.removeAttribute("src");
     snapshotPlaceholder.hidden = false;
     return;
   }
 
+  frameSnapshot.src = state.lastCaptureDataUrl;
+  frameSnapshot.hidden = false;
+  frameSnapshot.classList.add("visible");
   capturePreview.src = state.lastCaptureDataUrl;
   capturePreview.hidden = false;
   snapshotPlaceholder.hidden = true;
@@ -190,6 +206,13 @@ function applyCapturePreview() {
 function setSystemStatus({ camera, tracking, sync }) {
   if (camera) {
     sysCamera.textContent = camera;
+    if (camera === "Active") {
+      setLiveBadge("", "Camera Active");
+    } else if (camera === "Starting...") {
+      setLiveBadge("warning", "Camera Starting");
+    } else {
+      setLiveBadge("error", camera);
+    }
   }
   if (tracking) {
     sysTracking.textContent = tracking;
@@ -197,6 +220,47 @@ function setSystemStatus({ camera, tracking, sync }) {
   if (sync) {
     sysSync.textContent = sync;
   }
+}
+
+function stopCameraStream() {
+  if (!state.cameraStream) {
+    return;
+  }
+
+  for (const track of state.cameraStream.getTracks()) {
+    track.stop();
+  }
+  state.cameraStream = null;
+  video.srcObject = null;
+}
+
+async function ensureVideoReady() {
+  if (video.readyState >= 2) {
+    return;
+  }
+
+  await new Promise((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      cleanup();
+      reject(new Error("Camera stream did not become ready in time."));
+    }, 5000);
+
+    function cleanup() {
+      clearTimeout(timeoutId);
+      video.removeEventListener("loadedmetadata", onReady);
+      video.removeEventListener("loadeddata", onReady);
+      video.removeEventListener("canplay", onReady);
+    }
+
+    function onReady() {
+      cleanup();
+      resolve();
+    }
+
+    video.addEventListener("loadedmetadata", onReady, { once: true });
+    video.addEventListener("loadeddata", onReady, { once: true });
+    video.addEventListener("canplay", onReady, { once: true });
+  });
 }
 
 function mapFaceToFrame(face) {
@@ -309,8 +373,6 @@ function applySuccessData(data) {
   resultBadge.textContent = `${actionTitle.toUpperCase()} SUCCESSFUL`;
   resultTitle.textContent = `${actionTitle} Successful`;
   resultMessage.textContent = `Welcome, ${data.employee_name}. Attendance has been recorded successfully.`;
-  nextActionPill.textContent = actionTitle;
-  modeCopy.textContent = `Mode: Auto. The attendance service selected ${actionTitle.toLowerCase()} based on today's record.`;
 
   employeeName.textContent = data.employee_name;
   employeeCode.textContent = data.employee_code || data.employee_id || "--";
@@ -340,6 +402,7 @@ function setUIState(mode, data = {}) {
 
   if (mode === "idle") {
     hideSuccessPopup();
+    state.lastCaptureDataUrl = null;
     resetAttendancePanel();
     applyCapturePreview();
     applyLiveGuidance();
@@ -409,8 +472,6 @@ function setUIState(mode, data = {}) {
     resultTitle.textContent = "Recognition Failed";
     resultMessage.textContent = "Please try again or contact HR/Admin.";
     attendanceStatus.textContent = "Failed";
-    nextActionPill.textContent = "Retry required";
-    modeCopy.textContent = "The kiosk could not match this face to a registered employee.";
     applyCapturePreview();
     setLastSyncNow();
     setSystemStatus({ sync: "Failed" });
@@ -430,8 +491,6 @@ function setUIState(mode, data = {}) {
   resultTitle.textContent = "Recognition Unavailable";
   resultMessage.textContent = data.message || "Recognition unavailable. Please try again.";
   attendanceStatus.textContent = "Unavailable";
-  nextActionPill.textContent = "Service issue";
-  modeCopy.textContent = "The kiosk could not complete this verification request.";
   applyCapturePreview();
   setSystemStatus({ sync: "Error" });
 }
@@ -513,13 +572,36 @@ function initFaceTracking() {
 }
 
 function captureCurrentFrame(context, canvas) {
-  context.drawImage(video, 0, 0, canvas.width, canvas.height);
+  if (state.liveFace && video.videoWidth && video.videoHeight) {
+    const padding = 0.72;
+    const face = state.liveFace;
+    const faceSize = Math.max(face.width, face.height);
+    const cropSize = Math.min(
+      Math.max(faceSize * (1 + padding), 220),
+      Math.min(video.videoWidth, video.videoHeight),
+    );
+    const centerX = face.x + face.width / 2;
+    const centerY = face.y + face.height / 2;
+    const sourceX = clamp(centerX - cropSize / 2, 0, video.videoWidth - cropSize);
+    const sourceY = clamp(centerY - cropSize / 2, 0, video.videoHeight - cropSize);
+
+    context.drawImage(video, sourceX, sourceY, cropSize, cropSize, 0, 0, canvas.width, canvas.height);
+  } else {
+    context.drawImage(video, 0, 0, canvas.width, canvas.height);
+  }
   state.lastCaptureDataUrl = canvas.toDataURL("image/jpeg", 0.86);
 }
 
 async function handleScan() {
-  if (state.scanning || !video.srcObject) {
+  if (state.scanning) {
     return;
+  }
+
+  if (!video.srcObject) {
+    await startCamera({ force: true });
+    if (!video.srcObject) {
+      return;
+    }
   }
 
   clearTimers();
@@ -527,8 +609,8 @@ async function handleScan() {
   setUIState("scanning");
 
   const canvas = document.createElement("canvas");
-  canvas.width = 640;
-  canvas.height = 480;
+  canvas.width = 416;
+  canvas.height = 416;
   const context = canvas.getContext("2d");
 
   if (!context) {
@@ -577,37 +659,80 @@ async function handleScan() {
     }
 
     resetToIdleLater();
-  }, "image/jpeg", 0.92);
+  }, "image/jpeg", 0.82);
 }
 
 function resetAndReady() {
   clearTimers();
   state.scanning = false;
   setUIState("idle");
+  if (!video.srcObject) {
+    void startCamera({ force: true });
+  }
 }
 
-async function startCamera() {
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { width: 1280, height: 720, facingMode: "user" },
-    });
+async function startCamera({ force = false } = {}) {
+  if (state.startingCamera) {
+    return;
+  }
 
-    video.srcObject = stream;
+  if (force) {
+    stopCameraStream();
+  } else if (state.cameraStream && video.srcObject) {
     setSystemStatus({ camera: "Active" });
-    video.addEventListener(
-      "loadedmetadata",
-      () => {
-        initFaceTracking();
-        applyLiveGuidance();
-      },
-      { once: true }
-    );
-  } catch (_error) {
+    return;
+  }
+
+  state.startingCamera = true;
+
+  try {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      throw new Error("This browser does not support camera access on this page.");
+    }
+
     scanButton.disabled = true;
     retryButton.disabled = true;
     panelRetryButton.disabled = true;
-    setSystemStatus({ camera: "Permission Required", tracking: "Unavailable", sync: "Blocked" });
-    setUIState("error", { message: "Camera permission is required for kiosk scanning." });
+    setSystemStatus({ camera: "Starting...", tracking: "Checking...", sync: "Standby" });
+
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+        facingMode: "user",
+      },
+    });
+
+    state.cameraStream = stream;
+    video.srcObject = stream;
+    await ensureVideoReady();
+    await video.play();
+    scanButton.disabled = false;
+    retryButton.disabled = false;
+    panelRetryButton.disabled = false;
+    setSystemStatus({ camera: "Active" });
+    initFaceTracking();
+    applyLiveGuidance();
+  } catch (error) {
+    stopCameraStream();
+    scanButton.disabled = true;
+    retryButton.disabled = false;
+    panelRetryButton.disabled = false;
+    const message =
+      error && typeof error === "object" && "name" in error
+        ? (() => {
+            const name = String(error.name);
+            if (name === "NotAllowedError") return "Camera permission was denied. Allow camera access for this kiosk page.";
+            if (name === "NotFoundError") return "No camera device was found on this computer.";
+            if (name === "NotReadableError") return "The camera is busy or blocked by another application.";
+            if (name === "OverconstrainedError") return "The requested camera settings are not supported by this device.";
+            return "Camera access failed. Please check browser permissions and device availability.";
+          })()
+        : "Camera access failed. Please check browser permissions and device availability.";
+    setSystemStatus({ camera: "Camera Blocked", tracking: "Unavailable", sync: "Blocked" });
+    setUIState("error", { message });
+  } finally {
+    state.startingCamera = false;
   }
 }
 
